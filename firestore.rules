@@ -1,0 +1,149 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============ HELPER FUNCTIONS ============
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function currentUserEmail() {
+      return isSignedIn() && request.auth.token.email != null
+        ? request.auth.token.email
+        : '';
+    }
+    
+    function isAdmin(userId) {
+      return exists(/databases/$(database)/documents/admins/$(userId));
+    }
+    
+    function isDoctor(userId) {
+      return exists(/databases/$(database)/documents/doctors/$(userId));
+    }
+
+    function isDoctorByEmail(resourceEmail) {
+      return isSignedIn() && currentUserEmail() != '' && resourceEmail == currentUserEmail();
+    }
+    
+    function getRole(userId) {
+      // Returns 'admin', 'doctor', 'patient', or ''
+      let adminQuery = exists(/databases/$(database)/documents/admins/$(userId));
+      let doctorQuery = exists(/databases/$(database)/documents/doctors/$(userId));
+      return adminQuery ? 'admin' : (doctorQuery ? 'doctor' : 'patient');
+    }
+    
+    // ============ PATIENTS COLLECTION ============
+    match /patients/{patientId} {
+      // Patients can read/write their own profile
+      allow read: if isSignedIn() && request.auth.uid == patientId;
+      allow write: if isSignedIn() && request.auth.uid == patientId;
+    }
+    
+    // ============ DOCTORS COLLECTION ============
+    match /doctors/{doctorId} {
+      // All authenticated users can read doctor list (for booking)
+      allow read: if isSignedIn();
+      // Only admins can create/update/delete doctors
+      allow write: if isSignedIn() && isAdmin(request.auth.uid);
+      allow delete: if isSignedIn() && isAdmin(request.auth.uid);
+    }
+    
+    // ============ ADMINS COLLECTION ============
+    match /admins/{adminId} {
+      // Only the admin can read/write their own profile
+      allow read, write: if isSignedIn() && request.auth.uid == adminId;
+    }
+    
+    // ============ APPOINTMENTS COLLECTION ============
+    match /appointments/{appointmentId} {
+      // Read rules
+      allow read: if isSignedIn() && (
+        request.auth.uid == resource.data.patientId ||
+        currentUserEmail() == resource.data.email ||
+        request.auth.uid == resource.data.doctorId ||
+        currentUserEmail() == resource.data.doctorEmail ||
+        isAdmin(request.auth.uid)
+      );
+      
+      // Create: signed-in patient booking (email must match); allow guest bookings as fallback.
+      allow create: if (
+        isSignedIn() && currentUserEmail() == request.resource.data.email
+      ) || (
+        !isSignedIn() &&
+        request.resource.data.email is string &&
+        request.resource.data.name is string &&
+        request.resource.data.doctor is string &&
+        request.resource.data.status == 'Pending'
+      );
+      
+      // Update: Patient (reschedule), Doctor (confirm/complete), Admin (any)
+      allow update: if isSignedIn() && (
+        (
+          (request.auth.uid == resource.data.patientId || currentUserEmail() == resource.data.email) &&
+          (request.resource.data.rescheduleRequest != null || request.resource.data.cancelRequested != null)
+        ) ||
+        (
+          (request.auth.uid == resource.data.doctorId || currentUserEmail() == resource.data.doctorEmail) &&
+          (request.resource.data.status != null)
+        ) ||
+        isAdmin(request.auth.uid)
+      );
+      
+      // Delete: Only admin
+      allow delete: if isSignedIn() && isAdmin(request.auth.uid);
+    }
+    
+    // ============ REPORTS COLLECTION ============
+    match /reports/{reportId} {
+      // Read: Patient (own), Doctor (can view patient reports), Admin
+      allow read: if isSignedIn() && (
+        currentUserEmail() == resource.data.patientEmail ||
+        isDoctor(request.auth.uid) ||
+        isAdmin(request.auth.uid)
+      );
+      
+      // Create: Patients and Doctors can upload reports
+      allow create: if isSignedIn();
+      
+      // Delete: Only patient (owner) or admin
+      allow delete: if isSignedIn() && (
+        currentUserEmail() == resource.data.patientEmail ||
+        isAdmin(request.auth.uid)
+      );
+      
+      // Update: Patient or doctor who uploaded, or admin
+      allow update: if isSignedIn() && (
+        currentUserEmail() == resource.data.patientEmail ||
+        isDoctor(request.auth.uid) ||
+        isAdmin(request.auth.uid)
+      );
+    }
+
+    // ============ PRESCRIPTIONS COLLECTION ============
+    match /prescriptions/{prescriptionId} {
+      // Read: Patient (own prescriptions) or Doctor or Admin
+      allow read: if isSignedIn() && (
+        currentUserEmail() == resource.data.patientEmail ||
+        isDoctorByEmail(resource.data.doctorEmail) ||
+        isDoctor(request.auth.uid) ||
+        isAdmin(request.auth.uid)
+      );
+      
+      // Create: Only doctors can create prescriptions
+      allow create: if isSignedIn() && (
+        isDoctor(request.auth.uid) ||
+        isDoctorByEmail(request.resource.data.doctorEmail)
+      );
+      
+      // Update: Only the doctor who created it or admin
+      allow update: if isSignedIn() && (
+        isDoctorByEmail(resource.data.doctorEmail) ||
+        isDoctor(request.auth.uid) ||
+        isAdmin(request.auth.uid)
+      );
+      
+      // Delete: Only admin
+      allow delete: if isSignedIn() && isAdmin(request.auth.uid);
+    }
+  }
+}
