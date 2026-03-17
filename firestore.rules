@@ -57,12 +57,20 @@ service cloud.firestore {
     // ============ APPOINTMENTS COLLECTION ============
     match /appointments/{appointmentId} {
       // Read rules
-      allow read: if isSignedIn() && (
-        request.auth.uid == resource.data.patientId ||
-        currentUserEmail() == resource.data.email ||
-        request.auth.uid == resource.data.doctorId ||
-        currentUserEmail() == resource.data.doctorEmail ||
-        isAdmin(request.auth.uid)
+      allow read: if (
+        isSignedIn() && (
+          request.auth.uid == resource.data.patientId ||
+          currentUserEmail() == resource.data.email ||
+          request.auth.uid == resource.data.doctorId ||
+          currentUserEmail() == resource.data.doctorEmail ||
+          isAdmin(request.auth.uid)
+        )
+      ) || (
+        // Public read needed for doctor slot-availability checks on booking page.
+        !isSignedIn() &&
+        resource.data.doctorId is string &&
+        resource.data.date is string &&
+        resource.data.time is string
       );
       
       // Create: signed-in patient booking (email must match); allow guest bookings as fallback.
