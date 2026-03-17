@@ -18,12 +18,6 @@ export default function RootLayout() {
         name="index"
         options={{ title: "Discovery Coast Dental & Medical" }}
       />
-      <Stack.Screen name="doctors" options={{ title: "Our Doctors" }} />
-      <Stack.Screen name="dental-care" options={{ title: "Dental Care" }} />
-      <Stack.Screen
-        name="general-medicine"
-        options={{ title: "General Medicine" }}
-      />
       <Stack.Screen
         name="appointment"
         options={{ title: "Book Appointment" }}
