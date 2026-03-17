@@ -41,8 +41,8 @@ service cloud.firestore {
     
     // ============ DOCTORS COLLECTION ============
     match /doctors/{doctorId} {
-      // All authenticated users can read doctor list (for booking)
-      allow read: if isSignedIn();
+      // Public read so booking page can show doctors even before login.
+      allow read: if true;
       // Only admins can create/update/delete doctors
       allow write: if isSignedIn() && isAdmin(request.auth.uid);
       allow delete: if isSignedIn() && isAdmin(request.auth.uid);
