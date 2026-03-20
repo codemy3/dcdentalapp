@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Alert,
   Modal,
+  Platform,
   View,
   Text,
   FlatList,
@@ -10,12 +12,17 @@ import {
 } from 'react-native';
 import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 interface Report {
   id: string;
   name: string;
   type: string;
   description: string;
+  fileName?: string;
+  fileType?: string;
+  fileData?: string;
   uploadedAt: string;
   uploadedAtMs: number;
   uploadedBy: string; // 'patient' or 'doctor'
@@ -65,9 +72,12 @@ export function DoctorReportViewer({
             : new Date(rawUploadedAt || 0).getTime();
         data.push({
           id: doc.id,
-          name: docData.name || 'Report',
-          type: docData.type || 'Medical Report',
+          name: docData.name || docData.reportType || 'Report',
+          type: docData.type || docData.reportType || 'Medical Report',
           description: docData.description || '',
+          fileName: docData.fileName || '',
+          fileType: docData.fileType || '',
+          fileData: docData.fileData || '',
           uploadedAt: new Date(uploadedAtMs || Date.now()).toISOString(),
           uploadedAtMs,
           uploadedBy: docData.uploadedBy || 'patient',
@@ -87,6 +97,53 @@ export function DoctorReportViewer({
 
   const getUploadedByLabel = (uploadedBy: string) => {
     return uploadedBy === 'doctor' ? '👨‍⚕️ Doctor' : '👤 Patient';
+  };
+
+  const getMimeType = (report: Report) => {
+    if (report.fileType) return report.fileType;
+    const fileName = (report.fileName || '').toLowerCase();
+    if (fileName.endsWith('.pdf')) return 'application/pdf';
+    if (fileName.endsWith('.png')) return 'image/png';
+    if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) return 'image/jpeg';
+    return 'application/octet-stream';
+  };
+
+  const openReportDocument = async (report: Report) => {
+    if (!report.fileData) {
+      Alert.alert('No Document', 'This report does not contain an uploaded file.');
+      return;
+    }
+
+    try {
+      const mimeType = getMimeType(report);
+      const safeFileName = report.fileName || `report-${report.id}.pdf`;
+
+      if (Platform.OS === 'web') {
+        const dataUrl = `data:${mimeType};base64,${report.fileData}`;
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = safeFileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return;
+      }
+
+      const baseDir = (FileSystem as any).cacheDirectory || (FileSystem as any).documentDirectory || '';
+      const fileUri = `${baseDir}${safeFileName}`;
+      await FileSystem.writeAsStringAsync(fileUri, report.fileData, {
+        encoding: 'base64',
+      });
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri);
+      } else {
+        Alert.alert('Saved', `Document saved to: ${fileUri}`);
+      }
+    } catch (error) {
+      console.error('Error opening report document:', error);
+      Alert.alert('Error', 'Failed to open report document.');
+    }
   };
 
   const renderReportItem = ({ item }: { item: Report }) => (
@@ -189,6 +246,20 @@ export function DoctorReportViewer({
                       <Text style={styles.detailValue}>{selectedReport.description}</Text>
                     </View>
                   )}
+
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailLabel}>Document</Text>
+                    <Text style={styles.detailValue}>
+                      {selectedReport.fileName || 'No file name available'}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.openFileButton}
+                    onPress={() => openReportDocument(selectedReport)}
+                  >
+                    <Text style={styles.openFileButtonText}>Open Report Document</Text>
+                  </TouchableOpacity>
 
                   <Text style={styles.infoText}>
                     📝 Report data is stored securely. You can view this report anytime from your records.
@@ -338,6 +409,18 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 6,
     marginBottom: 15,
+  },
+  openFileButton: {
+    backgroundColor: '#0ea5e9',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  openFileButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
   },
   closeDetailButton: {
     backgroundColor: '#6c757d',
