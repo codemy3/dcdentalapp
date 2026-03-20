@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useEffect } from "react";
 import {
     Image,
     ScrollView,
@@ -11,6 +11,18 @@ import {
 
 export default function HomeScreen() {
   const router = useRouter();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get("mode");
+    const oobCode = params.get("oobCode");
+
+    if (mode === "resetPassword" && oobCode) {
+      router.replace(`/reset-password?${params.toString()}`);
+    }
+  }, [router]);
 
   return (
     <ScrollView style={styles.container}>

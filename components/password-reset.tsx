@@ -46,10 +46,10 @@ export function PasswordReset({ visible, onClose }: PasswordResetProps) {
       setLoading(true);
       setErrorText('');
 
-      const fallbackUrl = 'https://dcdentalapp.vercel.app/patient-login';
+      const fallbackUrl = 'https://dcdentalapp.vercel.app/reset-password';
       const webContinueUrl =
         Platform.OS === 'web' && typeof window !== 'undefined'
-          ? `${window.location.origin}/patient-login`
+          ? `${window.location.origin}/reset-password`
           : fallbackUrl;
 
       try {
