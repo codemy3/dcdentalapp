@@ -22,16 +22,19 @@ export function PasswordReset({ visible, onClose }: PasswordResetProps) {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState('');
+  const [successText, setSuccessText] = useState('');
 
   const handleClose = () => {
     setEmail('');
     setErrorText('');
+    setSuccessText('');
     onClose();
   };
 
   const handleResetPassword = async () => {
     if (!email.trim()) {
       setErrorText('Please enter your email address');
+      setSuccessText('');
       return;
     }
 
@@ -39,12 +42,14 @@ export function PasswordReset({ visible, onClose }: PasswordResetProps) {
 
     if (!normalizedEmail.includes('@')) {
       setErrorText('Please enter a valid email address');
+      setSuccessText('');
       return;
     }
 
     try {
       setLoading(true);
       setErrorText('');
+      setSuccessText('');
 
       const fallbackUrl = 'https://dcdentalapp.vercel.app/reset-password';
       const webContinueUrl =
@@ -84,6 +89,10 @@ export function PasswordReset({ visible, onClose }: PasswordResetProps) {
           },
         ]
       );
+
+      setSuccessText(
+        'Reset email sent. Please check your inbox and spam folder, then open the link to set a new password.',
+      );
     } catch (error: any) {
       let errorMessage = 'Failed to send reset email';
       
@@ -104,6 +113,7 @@ export function PasswordReset({ visible, onClose }: PasswordResetProps) {
       }
       
       setErrorText(errorMessage);
+      setSuccessText('');
       Alert.alert('Error', errorMessage);
     } finally {
       setLoading(false);
@@ -132,6 +142,7 @@ export function PasswordReset({ visible, onClose }: PasswordResetProps) {
             onChangeText={(text) => {
               setEmail(text);
               if (errorText) setErrorText('');
+              if (successText) setSuccessText('');
             }}
             keyboardType="email-address"
             autoCapitalize="none"
@@ -140,6 +151,7 @@ export function PasswordReset({ visible, onClose }: PasswordResetProps) {
           />
 
           {!!errorText && <Text style={styles.errorText}>{errorText}</Text>}
+          {!!successText && <Text style={styles.successText}>{successText}</Text>}
 
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
@@ -221,6 +233,11 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: '#ef4444',
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  successText: {
+    color: '#16a34a',
     fontSize: 13,
     marginBottom: 12,
   },
