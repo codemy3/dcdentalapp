@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Modal,
+  Platform,
   View,
   Text,
   TextInput,
@@ -44,8 +45,32 @@ export function PasswordReset({ visible, onClose }: PasswordResetProps) {
     try {
       setLoading(true);
       setErrorText('');
-      // Use default Firebase reset flow for maximum compatibility.
-      await sendPasswordResetEmail(auth, normalizedEmail);
+
+      const fallbackUrl = 'https://dcdentalapp.vercel.app/patient-login';
+      const webContinueUrl =
+        Platform.OS === 'web' && typeof window !== 'undefined'
+          ? `${window.location.origin}/patient-login`
+          : fallbackUrl;
+
+      try {
+        await sendPasswordResetEmail(auth, normalizedEmail, {
+          url: webContinueUrl,
+          handleCodeInApp: false,
+        });
+      } catch (innerError: any) {
+        const code = innerError?.code;
+        const shouldFallbackToDefaultFlow =
+          code === 'auth/invalid-continue-uri' ||
+          code === 'auth/unauthorized-continue-uri' ||
+          code === 'auth/missing-continue-uri';
+
+        if (!shouldFallbackToDefaultFlow) {
+          throw innerError;
+        }
+
+        // Fallback keeps reset working when continue URL configuration differs between environments.
+        await sendPasswordResetEmail(auth, normalizedEmail);
+      }
       
       Alert.alert(
         'Success',
