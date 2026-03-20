@@ -17,6 +17,7 @@ interface Report {
   type: string;
   description: string;
   uploadedAt: string;
+  uploadedAtMs: number;
   uploadedBy: string; // 'patient' or 'doctor'
   patientName: string;
 }
@@ -57,19 +58,25 @@ export function DoctorReportViewer({
 
       snapshot.forEach((doc) => {
         const docData = doc.data();
+        const rawUploadedAt = docData.uploadedAt;
+        const uploadedAtMs =
+          rawUploadedAt instanceof Timestamp
+            ? rawUploadedAt.toMillis()
+            : new Date(rawUploadedAt || 0).getTime();
         data.push({
           id: doc.id,
           name: docData.name || 'Report',
           type: docData.type || 'Medical Report',
           description: docData.description || '',
-          uploadedAt: docData.uploadedAt || new Date().toISOString(),
+          uploadedAt: new Date(uploadedAtMs || Date.now()).toISOString(),
+          uploadedAtMs,
           uploadedBy: docData.uploadedBy || 'patient',
           patientName: docData.patientName || '',
         });
       });
 
       // Sort by date (newest first)
-      data.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+      data.sort((a, b) => b.uploadedAtMs - a.uploadedAtMs);
       setReports(data);
     } catch (error) {
       console.error('Error loading reports:', error);

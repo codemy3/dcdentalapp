@@ -14,6 +14,7 @@ import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
+import { auth } from '../config/firebase';
 
 interface DoctorReportUploadProps {
   visible: boolean;
@@ -47,6 +48,42 @@ export function DoctorReportUpload({
   const [showTypeList, setShowTypeList] = useState(false);
   const [selectedFile, setSelectedFile] = useState<any>(null);
 
+  const fileToBase64 = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result !== 'string') {
+          reject(new Error('Unable to read selected file'));
+          return;
+        }
+        const base64 = result.includes(',') ? result.split(',')[1] : result;
+        resolve(base64);
+      };
+      reader.onerror = () => reject(new Error('Unable to read selected file'));
+      reader.readAsDataURL(file);
+    });
+
+  const readSelectedFileAsBase64 = async (fileAsset: any) => {
+    if (fileAsset?.file && typeof File !== 'undefined') {
+      return fileToBase64(fileAsset.file as File);
+    }
+
+    if (fileAsset?.uri?.startsWith('data:')) {
+      return fileAsset.uri.split(',')[1] || '';
+    }
+
+    if (fileAsset?.uri?.startsWith('blob:') || fileAsset?.uri?.startsWith('http')) {
+      const response = await fetch(fileAsset.uri);
+      const blob = await response.blob();
+      return fileToBase64(new File([blob], fileAsset?.name || 'report'));
+    }
+
+    return FileSystem.readAsStringAsync(fileAsset.uri, {
+      encoding: 'base64',
+    });
+  };
+
   const pickDocument = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -78,10 +115,8 @@ export function DoctorReportUpload({
     try {
       setLoading(true);
 
-      // Read file as base64
-      const base64 = await FileSystem.readAsStringAsync(selectedFile.uri, {
-        encoding: 'base64',
-      });
+      // Read selected document as base64 across web/native platforms.
+      const base64 = await readSelectedFileAsBase64(selectedFile);
 
       // Create report in Firestore
       const reportId = `${patientEmail}_${Date.now()}`;
@@ -89,9 +124,11 @@ export function DoctorReportUpload({
         patientEmail,
         patientName,
         type: reportType.trim(),
+        name: reportType.trim(),
         description: description.trim(),
         uploadedBy: 'doctor',
         uploadedByName: doctorName,
+        doctorEmail: auth.currentUser?.email || '',
         uploadedAt: serverTimestamp(),
         date: new Date().toISOString().split('T')[0],
         fileName: selectedFile.name,

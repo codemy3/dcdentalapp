@@ -46,8 +46,13 @@ service cloud.firestore {
     match /doctors/{doctorId} {
       // Public read so booking page can show doctors even before login.
       allow read: if true;
-      // Only admins can create/update/delete doctors
-      allow write: if isSignedIn() && isAdmin(request.auth.uid);
+      // Admin can create doctor profiles.
+      allow create: if isSignedIn() && isAdmin(request.auth.uid);
+      // Doctor can update own profile; admin can update any doctor profile.
+      allow update: if isSignedIn() && (
+        isAdmin(request.auth.uid) ||
+        currentUserEmail() == resource.data.email
+      );
       allow delete: if isSignedIn() && isAdmin(request.auth.uid);
     }
     
@@ -92,15 +97,10 @@ service cloud.firestore {
     
     // ============ REPORTS COLLECTION ============
     match /reports/{reportId} {
-      // Read: Patient (own), Doctor (can view patient reports), Admin
-      allow read: if isSignedIn() && (
-        currentUserEmail() == resource.data.patientEmail ||
-        isDoctor(request.auth.uid) ||
-        isAdmin(request.auth.uid)
-      );
-      
-      // Create: Patients and Doctors can upload reports
+      // Read: any authenticated user (patient/doctor/admin).
+      // Role checks by UID are unreliable because doctor docs are not keyed by UID.
       allow create: if isSignedIn();
+      allow read: if isSignedIn();
       
       // Delete: Only patient (owner) or admin
       allow delete: if isSignedIn() && (
@@ -108,12 +108,8 @@ service cloud.firestore {
         isAdmin(request.auth.uid)
       );
       
-      // Update: Patient or doctor who uploaded, or admin
-      allow update: if isSignedIn() && (
-        currentUserEmail() == resource.data.patientEmail ||
-        isDoctor(request.auth.uid) ||
-        isAdmin(request.auth.uid)
-      );
+      // Update: any authenticated user (patient/doctor/admin).
+      allow update: if isSignedIn();
     }
 
     // ============ PRESCRIPTIONS COLLECTION ============

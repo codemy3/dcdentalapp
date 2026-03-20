@@ -1,14 +1,13 @@
 import { useRouter } from "expo-router";
 import { signOut } from "firebase/auth";
 import {
-    collection,
-    doc,
-    getDocs,
-    orderBy,
-    query,
-    updateDoc,
-    where,
-    serverTimestamp,
+  collection,
+  doc,
+  getDocs,
+  query,
+  updateDoc,
+  where,
+  serverTimestamp,
 } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
 import {
@@ -136,41 +135,63 @@ export default function DoctorDashboard() {
   };
 
   const fetchAppointments = async () => {
-    console.log("🔄 fetchAppointments called");
-    if (!doctorData?.name) {
-      console.log("⚠️ No doctor name available yet, returning early");
+    if (!doctorData?.id && !doctorData?.email && !doctorData?.name) {
       return;
     }
     try {
-      // Query appointments assigned to this doctor by name
-      const doctorNameToQuery = doctorData.name.trim();
-      console.log("🔍 Querying appointments WHERE doctor ==", `'${doctorNameToQuery}'`);
-      
-      // First, let's see ALL appointments to debug
-      const allAppts = await getDocs(collection(db, "appointments"));
-      console.log("📊 Total appointments in database:", allAppts.size);
-      allAppts.forEach((doc) => {
-        const data = doc.data();
-        console.log("  - Appointment ID:", doc.id, "| Patient:", data.name, "| Doctor field:", `'${data.doctor}'`, "| Status:", data.status);
-      });
-      
-      const q = query(
-        collection(db, "appointments"),
-        where("doctor", "==", doctorNameToQuery)
-      );
-      const snapshot = await getDocs(q);
-      console.log("✅ Filtered query returned", snapshot.size, "appointments for doctor:", `'${doctorNameToQuery}'`);
+      // Prefer stable identity matches; fall back to legacy doctor-name records.
+      const resultMap = new Map<string, Appointment>();
+      const baseCollection = collection(db, "appointments");
 
-      const data: Appointment[] = [];
-      snapshot.forEach((docSnap) => {
-        const d = docSnap.data();
-        console.log("  ✓ Matched appointment:", d.name, "on", d.date, "at", d.time);
-        data.push({
-          id: docSnap.id,
-          ...d,
-          status: d.status || "Pending",
-        } as Appointment);
-      });
+      const queryTasks: Promise<void>[] = [];
+      if (doctorData?.id) {
+        queryTasks.push(
+          getDocs(query(baseCollection, where("doctorId", "==", doctorData.id))).then((snapshot) => {
+            snapshot.forEach((docSnap) => {
+              const d = docSnap.data();
+              resultMap.set(docSnap.id, {
+                id: docSnap.id,
+                ...d,
+                status: d.status || "Pending",
+              } as Appointment);
+            });
+          }),
+        );
+      }
+
+      if (doctorData?.email) {
+        queryTasks.push(
+          getDocs(query(baseCollection, where("doctorEmail", "==", doctorData.email))).then((snapshot) => {
+            snapshot.forEach((docSnap) => {
+              const d = docSnap.data();
+              resultMap.set(docSnap.id, {
+                id: docSnap.id,
+                ...d,
+                status: d.status || "Pending",
+              } as Appointment);
+            });
+          }),
+        );
+      }
+
+      if (doctorData?.name) {
+        queryTasks.push(
+          getDocs(query(baseCollection, where("doctor", "==", doctorData.name.trim()))).then((snapshot) => {
+            snapshot.forEach((docSnap) => {
+              const d = docSnap.data();
+              resultMap.set(docSnap.id, {
+                id: docSnap.id,
+                ...d,
+                status: d.status || "Pending",
+              } as Appointment);
+            });
+          }),
+        );
+      }
+
+      await Promise.all(queryTasks);
+
+      const data = Array.from(resultMap.values());
 
       // Sort in memory by createdAt descending
       data.sort((a, b) => {
@@ -179,11 +200,10 @@ export default function DoctorDashboard() {
         return dateB - dateA;
       });
 
-      console.log("📝 Total appointments after processing:", data.length);
       setAppointments(data);
       filterAppointments(data, activeTab, searchQuery);
     } catch (error) {
-      console.error("❌ Error loading appointments:", error);
+      console.error("Error loading appointments:", error);
       Alert.alert("Error", "Failed to load appointments");
     } finally {
       setLoading(false);
@@ -501,10 +521,12 @@ export default function DoctorDashboard() {
                 <TouchableOpacity
                   style={styles.reportsButton}
                   onPress={() => {
-                    setSelectedPatientId(apt.email);                    setSelectedPatientName(apt.name);                    setShowReportViewer(true);
+                    setSelectedPatientId(apt.email);
+                    setSelectedPatientName(apt.name);
+                    setShowReportViewer(true);
                   }}
                 >
-                  <Text style={styles.btnText}>�️ View Reports</Text>
+                  <Text style={styles.btnText}>View Reports</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.prescriptionButton}

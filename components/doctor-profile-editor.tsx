@@ -81,8 +81,9 @@ export function DoctorProfileEditor({
       return;
     }
 
-    if (phone && phone.trim().length !== 10) {
-      Alert.alert('Error', 'Phone number must be 10 digits');
+    const phoneDigits = phone.replace(/\D/g, '');
+    if (phoneDigits && (phoneDigits.length < 7 || phoneDigits.length > 15)) {
+      Alert.alert('Error', 'Please enter a valid phone number');
       return;
     }
 
