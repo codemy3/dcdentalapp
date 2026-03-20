@@ -26,6 +26,7 @@ export default function ResetPasswordScreen() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [errorText, setErrorText] = useState("");
+  const [successText, setSuccessText] = useState("");
 
   const code = typeof params.oobCode === "string" ? params.oobCode : "";
 
@@ -79,15 +80,19 @@ export default function ResetPasswordScreen() {
     try {
       setSubmitting(true);
       setErrorText("");
+      setSuccessText("");
       await confirmPasswordReset(auth, code, newPassword);
-      Alert.alert("Success", "Password reset successful. Please log in.", [
-        {
-          text: "OK",
-          onPress: () => router.replace("/patient-login"),
-        },
-      ]);
+      setSuccessText("Password reset successful. Redirecting to login...");
+
+      // Web popup alerts can be blocked; always provide inline success + timed redirect.
+      setTimeout(() => {
+        router.replace("/patient-login");
+      }, 1500);
+
+      Alert.alert("Success", "Password reset successful. Please log in.");
     } catch (error: any) {
       const codeValue = error?.code || "";
+      setSuccessText("");
       if (codeValue === "auth/weak-password") {
         setErrorText("Please choose a stronger password.");
       } else if (codeValue === "auth/expired-action-code") {
@@ -142,6 +147,7 @@ export default function ResetPasswordScreen() {
         />
 
         {!!errorText && <Text style={styles.errorText}>{errorText}</Text>}
+        {!!successText && <Text style={styles.successText}>{successText}</Text>}
 
         <TouchableOpacity
           style={[styles.button, (!validCode || submitting) && styles.buttonDisabled]}
@@ -210,6 +216,11 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: "#ef4444",
+    fontSize: 13,
+    marginBottom: 10,
+  },
+  successText: {
+    color: "#16a34a",
     fontSize: 13,
     marginBottom: 10,
   },

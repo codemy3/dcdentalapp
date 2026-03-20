@@ -39,8 +39,46 @@ export const ReportUpload: React.FC<ReportUploadProps> = ({
   const [fileUri, setFileUri] = useState('');
   const [fileSize, setFileSize] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<any>(null);
 
   const reportTypes = ['Medical Report', 'Lab Test', 'X-Ray', 'Prescription', 'Treatment Notes', 'Other'];
+
+  const MAX_UPLOAD_BYTES = 700 * 1024; // Keep below Firestore 1MB document limit after base64 expansion.
+
+  const fileToBase64 = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result !== 'string') {
+          reject(new Error('Unable to read selected file.'));
+          return;
+        }
+        resolve(result.includes(',') ? result.split(',')[1] : result);
+      };
+      reader.onerror = () => reject(new Error('Unable to read selected file.'));
+      reader.readAsDataURL(file);
+    });
+
+  const readSelectedFileAsBase64 = async (fileAsset: any) => {
+    if (fileAsset?.file && typeof File !== 'undefined') {
+      return fileToBase64(fileAsset.file as File);
+    }
+
+    if (fileAsset?.uri?.startsWith('data:')) {
+      return fileAsset.uri.split(',')[1] || '';
+    }
+
+    if (fileAsset?.uri?.startsWith('blob:') || fileAsset?.uri?.startsWith('http')) {
+      const response = await fetch(fileAsset.uri);
+      const blob = await response.blob();
+      return fileToBase64(new File([blob], fileAsset?.name || 'report'));
+    }
+
+    return FileSystem.readAsStringAsync(fileAsset.uri, {
+      encoding: 'base64',
+    });
+  };
 
   const pickDocument = async () => {
     try {
@@ -61,15 +99,15 @@ export const ReportUpload: React.FC<ReportUploadProps> = ({
       }
 
       const fileSizeBytes = file.size || 0;
-      // Limit to 1MB (Firestore doc max is 1MB)
-      if (fileSizeBytes > 1024 * 1024) {
-        Alert.alert('Error', 'File too large. Please choose a file under 1MB.');
+      if (fileSizeBytes > MAX_UPLOAD_BYTES) {
+        Alert.alert('Error', 'File too large. Please choose a file under 700 KB.');
         return;
       }
 
       setFileName(file.name || 'document');
       setFileUri(file.uri);
       setFileSize(fileSizeBytes);
+      setSelectedFile(file);
       console.log('📄 File selected:', file.name, 'Size:', fileSizeBytes, 'bytes');
     } catch (error) {
       console.error('Error picking document:', error);
@@ -90,30 +128,7 @@ export const ReportUpload: React.FC<ReportUploadProps> = ({
 
     setUploading(true);
     try {
-      // Convert file to base64
-      let base64: string;
-
-      if (Platform.OS === 'web') {
-        // For web: use FileReader
-        const response = await fetch(fileUri);
-        const blob = await response.blob();
-        base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const result = reader.result as string;
-            // Remove data URL prefix (e.g., "data:application/pdf;base64,")
-            const base64String = result.split(',')[1] || result;
-            resolve(base64String);
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-      } else {
-        // For native: use expo-file-system
-        base64 = await FileSystem.readAsStringAsync(fileUri, {
-          encoding: 'base64',
-        });
-      }
+      const base64 = await readSelectedFileAsBase64(selectedFile || { uri: fileUri, name: fileName });
 
       // Store report with base64 data in Firestore
       const reportData = {
@@ -142,6 +157,7 @@ export const ReportUpload: React.FC<ReportUploadProps> = ({
       setFileName('');
       setFileUri('');
       setFileSize(0);
+      setSelectedFile(null);
       setReportType('Medical Report');
       onUploadSuccess();
       onClose();
