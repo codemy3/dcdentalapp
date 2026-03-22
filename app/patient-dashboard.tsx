@@ -110,10 +110,17 @@ export default function PatientDashboard() {
   const [cancellationAppointment, setCancellationAppointment] = useState<Appointment | null>(null);
 
   const currentUser = auth.currentUser;
+  const [pageReady, setPageReady] = useState(false);
 
   useEffect(() => {
+    const timer = setTimeout(() => setPageReady(true), 20);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!pageReady) return;
     if (!currentUser) {
-      router.push('/patient-login');
+      router.replace('/patient-login');
       return;
     }
 
@@ -126,31 +133,62 @@ export default function PatientDashboard() {
       }
     });
 
-    // Fetch patient appointments
-    const appointmentsRef = query(
+    // Fetch patient appointments by patient ID and email (fallback) for robust recent-appointment listing
+    const appointmentsQueryById = query(
       collection(db, 'appointments'),
-      where('email', '==', currentUser.email)
+      where('patientId', '==', currentUser.uid)
     );
+    const appointmentsQueryByEmail = currentUser.email
+      ? query(
+          collection(db, 'appointments'),
+          where('email', '==', currentUser.email.toLowerCase())
+        )
+      : null;
 
-    const unsubscribeAppointments = onSnapshot(appointmentsRef, (querySnapshot) => {
-      const appointmentsData: Appointment[] = [];
+    const mapSnapToAppointments = (querySnapshot: any) => {
+      const data: Appointment[] = [];
       querySnapshot.forEach((doc) => {
-        appointmentsData.push({
-          id: doc.id,
-          ...doc.data(),
-        } as Appointment);
+        data.push({ id: doc.id, ...doc.data() } as Appointment);
       });
+      return data;
+    };
 
-      // Sort by date descending
-      appointmentsData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      setAppointments(appointmentsData);
+    let loadedById: Appointment[] = [];
+    let loadedByEmail: Appointment[] = [];
+
+    const unionAppointments = () => {
+      const combined = [...loadedById, ...loadedByEmail];
+      const unique = new Map<string, Appointment>();
+      combined.forEach((apt) => {
+        unique.set(apt.id, apt);
+      });
+      const result = Array.from(unique.values());
+      result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setAppointments(result);
       setLoading(false);
       setRefreshing(false);
+    };
+
+    const unsubscribeAppointmentsById = onSnapshot(appointmentsQueryById, (querySnapshot) => {
+      loadedById = mapSnapToAppointments(querySnapshot);
+      unionAppointments();
     });
+
+    let unsubscribeAppointmentsByEmail: (() => void) | null = null;
+    if (appointmentsQueryByEmail) {
+      unsubscribeAppointmentsByEmail = onSnapshot(appointmentsQueryByEmail, (querySnapshot) => {
+        loadedByEmail = mapSnapToAppointments(querySnapshot);
+        unionAppointments();
+      });
+    }
+
 
     return () => {
       unsubscribePatient();
-      unsubscribeAppointments();
+      unsubscribeAppointmentsById();
+      if (unsubscribeAppointmentsByEmail) {
+        unsubscribeAppointmentsByEmail();
+      }
     };
   }, [currentUser]);
 
@@ -345,8 +383,13 @@ export default function PatientDashboard() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>Hello, {patientName}! 👋</Text>
+          <Text style={styles.greeting}>Hello, {patientName || 'Patient'}! 👋</Text>
           <Text style={styles.subtitle}>Your Appointments</Text>
+          <View style={styles.patientStatusBadge}> 
+            <Text style={styles.patientStatusBadgeText}>
+              {currentUser ? '🔒 Signed-in Patient Mode' : '👤 Guest Mode'}
+            </Text>
+          </View>
         </View>
         <LogoutButton userType="patient" style={styles.logoutButton} />
       </View>
@@ -669,6 +712,19 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 12,
     fontWeight: '600',
+  },
+  patientStatusBadge: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    borderRadius: 12,
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  patientStatusBadgeText: {
+    color: '#166534',
+    fontSize: 12,
+    fontWeight: '700',
   },
   cardDetails: {
     marginBottom: 12,

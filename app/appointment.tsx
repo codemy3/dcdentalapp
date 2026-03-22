@@ -96,9 +96,12 @@ export default function AppointmentScreen() {
   const [loading, setLoading] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const currentUser = auth.currentUser;
+  const signedInEmail = (currentUser?.email || "").trim().toLowerCase();
+  const isSignedIn = Boolean(currentUser);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Initialize EmailJS on component mount
   useEffect(() => {
@@ -114,7 +117,7 @@ export default function AppointmentScreen() {
 
   const [formData, setFormData] = useState({
     name: "",
-    email: "",
+    email: signedInEmail,
     phone: "",
     doctorId: "",
     doctorName: "",
@@ -122,6 +125,11 @@ export default function AppointmentScreen() {
     doctorSpecialization: "",
     service: "General Check-up",
   });
+
+  useEffect(() => {
+    if (!signedInEmail) return;
+    setFormData((prev) => ({ ...prev, email: signedInEmail }));
+  }, [signedInEmail]);
 
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
   const [loadingDoctors, setLoadingDoctors] = useState(false);
@@ -170,20 +178,31 @@ export default function AppointmentScreen() {
 
   // Validate form
   const validateForm = () => {
+    const errors: Record<string, string> = {};
+
     if (!formData.name.trim()) {
-      Alert.alert("Error", "Please enter your name");
-      return false;
+      errors.name = "Please enter your name.";
     }
     if (!formData.email.trim()) {
-      Alert.alert("Error", "Please enter your email");
-      return false;
+      errors.email = "Please enter your email address.";
+    } else if (isSignedIn && signedInEmail && formData.email.trim().toLowerCase() !== signedInEmail) {
+      errors.email = "Logged-in email must match your profile email.";
     }
     if (!formData.phone.trim()) {
-      Alert.alert("Error", "Please enter your phone number");
-      return false;
+      errors.phone = "Please enter your phone number.";
     }
-    if (!formData.doctorName) {
-      Alert.alert("Error", "Please select a doctor");
+    if (!formData.doctorId) {
+      errors.doctor = "Please select a doctor.";
+    }
+    if (!selectedSlot) {
+      errors.slot = "Please select an available time slot.";
+    }
+
+    setFieldErrors(errors);
+
+    if (Object.keys(errors).length > 0) {
+      const firstError = errors[Object.keys(errors)[0]];
+      Alert.alert("Incomplete form", firstError);
       return false;
     }
     return true;
@@ -268,6 +287,7 @@ export default function AppointmentScreen() {
     try {
       const requestedDate = toIsoDateString(date);
       const requestedTime = selectedSlot;
+      const bookingEmail = (signedInEmail || formData.email).trim().toLowerCase();
 
       // Prevent double-booking for the same doctor, date, and time.
       const appointmentsCollection = collection(db, "appointments");
@@ -301,9 +321,8 @@ export default function AppointmentScreen() {
       }
 
       // Restriction: one active appointment per email per day.
-      const normalizedEmail = formData.email.trim().toLowerCase();
       const userAppointments = await getDocs(
-        query(collection(db, "appointments"), where("email", "==", normalizedEmail)),
+        query(collection(db, "appointments"), where("email", "==", bookingEmail)),
       );
 
       const hasExistingAppointmentForDay = userAppointments.docs.some((snapshot) => {
@@ -323,7 +342,7 @@ export default function AppointmentScreen() {
       // Save to Firebase
       const appointmentData = {
         name: formData.name.trim(),
-        email: formData.email.trim().toLowerCase(),
+        email: bookingEmail,
         patientId: currentUser?.uid || null,
         phone: formData.phone.trim(),
         doctor: formData.doctorName.trim(),
@@ -338,7 +357,7 @@ export default function AppointmentScreen() {
         // Store patient profile for history
         patientProfile: {
           name: formData.name.trim(),
-          email: formData.email.trim().toLowerCase(),
+          email: bookingEmail,
           phone: formData.phone.trim(),
           createdAt: new Date().toISOString(),
         },
@@ -405,6 +424,50 @@ export default function AppointmentScreen() {
 
   return (
     <>
+      <View style={styles.heroCard}>
+        <Text style={styles.heroTitle}>Easy Dental Booking</Text>
+        <Text style={styles.heroSubtitle}>
+          Book quickly as a guest or sign in to track appointments, prescriptions and reports.
+        </Text>
+        <View style={styles.stepRow}>
+          <Text style={styles.stepBadge}>1</Text>
+          <Text style={styles.stepText}>Choose service & doctor</Text>
+        </View>
+        <View style={styles.stepRow}>
+          <Text style={styles.stepBadge}>2</Text>
+          <Text style={styles.stepText}>Pick date & time</Text>
+        </View>
+        <View style={styles.stepRow}>
+          <Text style={styles.stepBadge}>3</Text>
+          <Text style={styles.stepText}>Confirm and get email receipt</Text>
+        </View>
+        {!isSignedIn ? (
+          <>
+            <Text style={styles.infoText}>
+              Tip: create an account to manage bookings and view prescriptions/reports in one place.
+            </Text>
+            <View style={styles.modeButtonsRow}>
+              <TouchableOpacity
+                style={[styles.modeButton, styles.modeButtonPrimary]}
+                onPress={() => router.push('/patient-login')}
+              >
+                <Text style={styles.modeButtonText}>Login</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeButton, styles.modeButtonSecondary]}
+                onPress={() => router.push('/patient-register')}
+              >
+                <Text style={styles.modeButtonText}>Register</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        ) : (
+          <Text style={styles.infoText}>
+            Logged in as {signedInEmail}. Appointments are synchronized with your profile.
+          </Text>
+        )}
+      </View>
+
       {/* Success Modal */}
       <Modal visible={showSuccessModal} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
@@ -456,14 +519,24 @@ export default function AppointmentScreen() {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Email Address *</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, fieldErrors.email && styles.inputError]}
               placeholder="your.email@example.com"
               placeholderTextColor="#9ca3af"
               value={formData.email}
               onChangeText={(text) => setFormData({ ...formData, email: text })}
               keyboardType="email-address"
               autoCapitalize="none"
+              editable={!isSignedIn}
             />
+            {fieldErrors.email ? (
+              <Text style={styles.errorText}>{fieldErrors.email}</Text>
+            ) : isSignedIn && signedInEmail ? (
+              <Text style={styles.helperText}>Using your logged-in email for booking.</Text>
+            ) : (
+              <Text style={styles.helperText}>
+                You can also register/login to track all appointments and prescriptions in your account.
+              </Text>
+            )}
           </View>
 
           {/* Phone */}
@@ -482,6 +555,7 @@ export default function AppointmentScreen() {
           {/* Doctor Dropdown */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Select Doctor *</Text>
+            {fieldErrors.doctor ? <Text style={styles.errorText}>{fieldErrors.doctor}</Text> : null}
             <View style={styles.pickerContainer}>
               {loadingDoctors ? (
                 <Text style={styles.helperText}>Loading doctors...</Text>
@@ -608,6 +682,7 @@ export default function AppointmentScreen() {
           {/* Available Slots */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Available Slots *</Text>
+            {fieldErrors.slot ? <Text style={styles.errorText}>{fieldErrors.slot}</Text> : null}
             {!formData.doctorId ? (
               <Text style={styles.helperText}>Select a doctor to view available slots.</Text>
             ) : loadingSlots ? (
@@ -707,7 +782,63 @@ const styles = StyleSheet.create({
   pickerOptionSelected: { borderColor: "#ff6b35", backgroundColor: "#fff5f2" },
   pickerOptionText: { fontSize: 15, color: "#6b7280" },
   pickerOptionTextSelected: { color: "#ff6b35", fontWeight: "600" },
-  helperText: { color: "#6b7280", fontSize: 14 },
+  helperText: { color: "#475569", fontSize: 14 },
+  inputError: {
+    borderColor: "#ef4444",
+  },
+  errorText: {
+    color: "#b91c1c",
+    fontSize: 12,
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  heroCard: {
+    backgroundColor: "#e0f2fe",
+    margin: 16,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+  },
+  heroTitle: { fontSize: 22, fontWeight: "700", color: "#0c4a6e", marginBottom: 8 },
+  heroSubtitle: { fontSize: 14, fontWeight: "500", color: "#1e293b", marginBottom: 10 },
+  stepRow: { flexDirection: "row", alignItems: "center", marginBottom: 4 },
+  stepBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#0284c7",
+    color: "#fff",
+    textAlign: "center",
+    lineHeight: 24,
+    fontWeight: "700",
+    marginRight: 8,
+  },
+  stepText: { fontSize: 13, color: "#0f172a" },
+  infoText: { fontSize: 13, color: "#334155", marginTop: 8 },
+  modeButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  modeButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+  modeButtonPrimary: {
+    backgroundColor: '#0ea5e9',
+  },
+  modeButtonSecondary: {
+    backgroundColor: '#34d399',
+  },
+  modeButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
   serviceChips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
     paddingVertical: 10,
@@ -741,18 +872,18 @@ const styles = StyleSheet.create({
   },
   dateButtonText: { fontSize: 15, color: "#1f2937", fontWeight: "500" },
   submitButton: {
-    backgroundColor: "#ff6b35",
+    backgroundColor: "#0f766e",
     padding: 18,
     borderRadius: 12,
     alignItems: "center",
     marginTop: 8,
-    shadowColor: "#ff6b35",
+    shadowColor: "#0f766e",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 5,
   },
-  submitButtonDisabled: { backgroundColor: "#fca788", opacity: 0.6 },
+  submitButtonDisabled: { backgroundColor: "#94a3b8", opacity: 0.8 },
   submitButtonText: {
     color: "#fff",
     fontSize: 18,

@@ -67,9 +67,13 @@ service cloud.firestore {
       // Public read needed so the booking page can query taken slots even before login.
       allow read: if true;
       
-      // Create: signed-in patient booking (email must match); allow guest bookings as fallback.
+      // Create: signed-in patient booking by email or uid; allow guest bookings as fallback.
       allow create: if (
-        isSignedIn() && currentUserEmail() == request.resource.data.email
+        isSignedIn() && (
+          isAdmin(request.auth.uid) ||
+          currentUserEmail() == request.resource.data.email ||
+          request.resource.data.patientId == request.auth.uid
+        )
       ) || (
         !isSignedIn() &&
         request.resource.data.email is string &&
