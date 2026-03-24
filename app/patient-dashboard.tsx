@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
-import { collection, doc, onSnapshot, query, where, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, onSnapshot, query, where, updateDoc, serverTimestamp, onAuthStateChanged } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { Alert, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View, Modal, TextInput } from 'react-native';
 import { auth, db } from '../config/firebase';
@@ -109,8 +109,15 @@ export default function PatientDashboard() {
   const [showCancellationModal, setShowCancellationModal] = useState(false);
   const [cancellationAppointment, setCancellationAppointment] = useState<Appointment | null>(null);
 
-  const currentUser = auth.currentUser;
+  const [currentUser, setCurrentUser] = useState(auth.currentUser);
   const [pageReady, setPageReady] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+    });
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => setPageReady(true), 20);
