@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
-import { signOut } from 'firebase/auth';
-import { collection, doc, onSnapshot, query, where, updateDoc, serverTimestamp, onAuthStateChanged } from 'firebase/firestore';
+import { signOut, onAuthStateChanged } from 'firebase/auth';
+import { collection, doc, onSnapshot, query, where, updateDoc, serverTimestamp } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { Alert, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View, Modal, TextInput } from 'react-native';
 import { auth, db } from '../config/firebase';
