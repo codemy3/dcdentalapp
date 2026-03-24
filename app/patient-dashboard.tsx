@@ -110,22 +110,18 @@ export default function PatientDashboard() {
   const [cancellationAppointment, setCancellationAppointment] = useState<Appointment | null>(null);
 
   const [currentUser, setCurrentUser] = useState(auth.currentUser);
-  const [pageReady, setPageReady] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
+      setAuthReady(true);
     });
     return unsubscribe;
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => setPageReady(true), 20);
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    if (!pageReady) return;
+    if (!authReady) return;
     if (!currentUser) {
       router.replace('/patient-login');
       return;
